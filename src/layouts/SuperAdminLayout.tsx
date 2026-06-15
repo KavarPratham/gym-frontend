@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useLogout } from '@/hooks/useAuth'
 import { useAuthStore } from '@/store/authStore'
-import { LayoutDashboard, Building2, Users, LogOut, Settings, CreditCard, Contact, Menu, X, Bell } from 'lucide-react'
+import { LayoutDashboard, Building2, Users, LogOut, Settings, CreditCard, Contact, Menu, X, Bell, Receipt } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 
@@ -11,6 +11,7 @@ const NAV = [
   { to: '/super-admin/gyms', icon: Building2, label: 'Gyms' },
   { to: '/super-admin/plans', icon: CreditCard, label: 'Plans' },
   { to: '/super-admin/members', icon: Contact, label: 'Members' },
+  { to: '/super-admin/payments', icon: Receipt, label: 'Payments' },
   { to: '/super-admin/staff', icon: Users, label: 'Staff' },
   { to: '/super-admin/settings', icon: Settings, label: 'Settings' },
 ]

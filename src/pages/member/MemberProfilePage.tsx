@@ -1,294 +1,62 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import axios from 'axios'
+import { CheckCircle2, Lock, User } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { User, Lock, Mail, ShieldAlert } from 'lucide-react'
-import { useAuthStore } from '@/store/authStore'
-import { useUpdateMe, useChangePassword } from '@/hooks/useAuth'
-import { useMyProfile } from '@/hooks/useMembers'
+import { authApi } from '@/api/auth'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { useAuthStore } from '@/store/authStore'
 import { cn } from '@/utils/cn'
 
-const profileSchema = z.object({
-  full_name: z.string().min(2, 'Name must be at least 2 characters'),
-  phone: z.string().optional(),
-})
-
+const profileSchema = z.object({ full_name: z.string().min(2, 'Name required'), phone: z.string().optional() })
 const passwordSchema = z.object({
-  old_password: z.string().min(1, 'Current password is required'),
-  new_password: z.string().min(6, 'New password must be at least 6 characters'),
-  confirm_new_password: z.string().min(1, 'Please confirm your new password'),
-}).refine(data => data.new_password === data.confirm_new_password, {
-  message: 'Passwords do not match',
-  path: ['confirm_new_password'],
-})
+  old_password: z.string().min(1, 'Current password required'),
+  new_password: z.string().min(8, 'Min 8 characters'),
+  confirm: z.string(),
+}).refine((data) => data.new_password === data.confirm, { message: "Passwords don't match", path: ['confirm'] })
+type ProfileForm = z.infer<typeof profileSchema>
+type PasswordForm = z.infer<typeof passwordSchema>
+const inputClass = (error?: string) => cn('w-full border rounded-lg px-3 py-2.5 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring', error ? 'border-destructive' : 'border-input')
 
-type ProfileFormData = z.infer<typeof profileSchema>
-type PasswordFormData = z.infer<typeof passwordSchema>
-
-const inputCls = (error?: string) => cn(
-  'w-full border rounded-lg px-3 py-2.5 text-sm bg-background text-foreground',
-  'placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-shadow',
-  error ? 'border-destructive' : 'border-input'
-)
+function apiError(error: unknown, fallback: string) {
+  if (!axios.isAxiosError(error)) return fallback
+  const data = error.response?.data as { message?: string; errors?: Record<string, string[]> } | undefined
+  return data?.errors?.old_password?.[0] ?? data?.message ?? fallback
+}
 
 export default function MemberProfilePage() {
-  const { user } = useAuthStore()
-  const { data: memberProfile } = useMyProfile()
-  
-  const updateMe = useUpdateMe()
-  const changePassword = useChangePassword()
-
-  const [profileSuccess, setProfileSuccess] = useState('')
+  const { user, setUser } = useAuthStore()
+  const [profileSaved, setProfileSaved] = useState(false)
+  const [passwordSaved, setPasswordSaved] = useState(false)
   const [profileError, setProfileError] = useState('')
-  const [passwordSuccess, setPasswordSuccess] = useState('')
   const [passwordError, setPasswordError] = useState('')
+  const profileForm = useForm<ProfileForm>({ resolver: zodResolver(profileSchema), defaultValues: { full_name: user?.full_name ?? '', phone: user?.phone ?? '' } })
+  const passwordForm = useForm<PasswordForm>({ resolver: zodResolver(passwordSchema) })
 
-  const {
-    register: registerProfile,
-    handleSubmit: handleProfileSubmit,
-    reset: resetProfile,
-    formState: { errors: profileErrors }
-  } = useForm<ProfileFormData>({
-    resolver: zodResolver(profileSchema),
-    defaultValues: {
-      full_name: user?.full_name ?? '',
-      phone: user?.phone ?? '',
+  const saveProfile = async (data: ProfileForm) => {
+    try {
+      setProfileError('')
+      const response = await authApi.updateMe(data)
+      setUser(response.data.data)
+      setProfileSaved(true)
+      window.setTimeout(() => setProfileSaved(false), 3000)
+    } catch (error) {
+      setProfileError(apiError(error, 'Update failed.'))
     }
-  })
-
-  const {
-    register: registerPassword,
-    handleSubmit: handlePasswordSubmit,
-    reset: resetPassword,
-    formState: { errors: passwordErrors }
-  } = useForm<PasswordFormData>({
-    resolver: zodResolver(passwordSchema)
-  })
-
-  useEffect(() => {
-    if (user) {
-      resetProfile({
-        full_name: user.full_name,
-        phone: user.phone ?? '',
-      })
-    }
-  }, [user, resetProfile])
-
-  const onUpdateProfile = (data: ProfileFormData) => {
-    setProfileSuccess('')
-    setProfileError('')
-    updateMe.mutate(data, {
-      onSuccess: () => {
-        setProfileSuccess('Profile updated successfully.')
-      },
-      onError: (err: any) => {
-        setProfileError(err.response?.data?.message ?? 'Failed to update profile.')
-      }
-    })
   }
 
-  const onChangePasswordSubmit = (data: PasswordFormData) => {
-    setPasswordSuccess('')
-    setPasswordError('')
-    changePassword.mutate({
-      old_password: data.old_password,
-      new_password: data.new_password,
-    }, {
-      onSuccess: () => {
-        setPasswordSuccess('Password changed successfully.')
-        resetPassword({ old_password: '', new_password: '', confirm_new_password: '' })
-      },
-      onError: (err: any) => {
-        setPasswordError(err.response?.data?.message ?? 'Failed to change password.')
-      }
-    })
+  const savePassword = async (data: PasswordForm) => {
+    try {
+      setPasswordError('')
+      await authApi.changePassword({ old_password: data.old_password, new_password: data.new_password })
+      passwordForm.reset()
+      setPasswordSaved(true)
+      window.setTimeout(() => setPasswordSaved(false), 3000)
+    } catch (error) {
+      setPasswordError(apiError(error, 'Password change failed.'))
+    }
   }
 
-  return (
-    <div className="space-y-8 max-w-4xl">
-      <PageHeader
-        title="My Profile"
-        description="Manage your account profile details and security settings."
-      />
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Profile Card */}
-        <div className="md:col-span-2 space-y-6">
-          <div className="bg-card border border-border rounded-2xl p-6">
-            <h2 className="text-base font-semibold text-foreground mb-1 flex items-center gap-2">
-              <User size={18} className="text-primary" />
-              Profile Details
-            </h2>
-            <p className="text-xs text-muted-foreground mb-6">Update your account full name and contact number.</p>
-
-            <form onSubmit={handleProfileSubmit(onUpdateProfile)} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Full Name</label>
-                  <input
-                    {...registerProfile('full_name')}
-                    placeholder="Full name"
-                    className={inputCls(profileErrors.full_name?.message)}
-                  />
-                  {profileErrors.full_name?.message && (
-                    <p className="text-xs text-destructive">{profileErrors.full_name.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Phone Number</label>
-                  <input
-                    {...registerProfile('phone')}
-                    placeholder="Contact number"
-                    className={inputCls()}
-                  />
-                </div>
-              </div>
-
-              {profileSuccess && (
-                <div className="text-sm text-green-600 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/30 rounded-lg px-3 py-2.5">
-                  {profileSuccess}
-                </div>
-              )}
-
-              {profileError && (
-                <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2.5">
-                  {profileError}
-                </div>
-              )}
-
-              <div className="flex justify-end pt-2">
-                <button
-                  type="submit"
-                  disabled={updateMe.isPending}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 font-semibold text-sm px-5 py-2.5 rounded-lg transition-colors"
-                >
-                  {updateMe.isPending ? 'Updating…' : 'Save Profile'}
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* Change Password Card */}
-          <div className="bg-card border border-border rounded-2xl p-6">
-            <h2 className="text-base font-semibold text-foreground mb-1 flex items-center gap-2">
-              <Lock size={18} className="text-primary" />
-              Security Settings
-            </h2>
-            <p className="text-xs text-muted-foreground mb-6">Change your account access password.</p>
-
-            <form onSubmit={handlePasswordSubmit(onChangePasswordSubmit)} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Current Password</label>
-                <input
-                  {...registerPassword('old_password')}
-                  type="password"
-                  placeholder="••••••••"
-                  className={inputCls(passwordErrors.old_password?.message)}
-                />
-                {passwordErrors.old_password?.message && (
-                  <p className="text-xs text-destructive">{passwordErrors.old_password.message}</p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">New Password</label>
-                  <input
-                    {...registerPassword('new_password')}
-                    type="password"
-                    placeholder="••••••••"
-                    className={inputCls(passwordErrors.new_password?.message)}
-                  />
-                  {passwordErrors.new_password?.message && (
-                    <p className="text-xs text-destructive">{passwordErrors.new_password.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Confirm New Password</label>
-                  <input
-                    {...registerPassword('confirm_new_password')}
-                    type="password"
-                    placeholder="••••••••"
-                    className={inputCls(passwordErrors.confirm_new_password?.message)}
-                  />
-                  {passwordErrors.confirm_new_password?.message && (
-                    <p className="text-xs text-destructive">{passwordErrors.confirm_new_password.message}</p>
-                  )}
-                </div>
-              </div>
-
-              {passwordSuccess && (
-                <div className="text-sm text-green-600 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/30 rounded-lg px-3 py-2.5">
-                  {passwordSuccess}
-                </div>
-              )}
-
-              {passwordError && (
-                <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2.5">
-                  {passwordError}
-                </div>
-              )}
-
-              <div className="flex justify-end pt-2">
-                <button
-                  type="submit"
-                  disabled={changePassword.isPending}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 font-semibold text-sm px-5 py-2.5 rounded-lg transition-colors"
-                >
-                  {changePassword.isPending ? 'Updating…' : 'Change Password'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-
-        {/* Read-Only Info Card */}
-        <div className="space-y-6">
-          <div className="bg-card border border-border rounded-2xl p-6">
-            <h3 className="text-sm font-semibold text-foreground mb-4 uppercase tracking-widest text-muted-foreground/85">
-              Account Metadata
-            </h3>
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5 p-2 rounded-lg bg-muted">
-                  <Mail size={14} className="text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Email</p>
-                  <p className="text-sm font-medium text-foreground mt-0.5 break-all">{user?.email}</p>
-                </div>
-              </div>
-
-              {memberProfile && (
-                <>
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 p-2 rounded-lg bg-muted">
-                      <ShieldAlert size={14} className="text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Member Code</p>
-                      <p className="text-sm font-mono font-medium text-foreground mt-0.5">{memberProfile.member_code}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 p-2 rounded-lg bg-muted">
-                      <ShieldAlert size={14} className="text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Assigned Gym</p>
-                      <p className="text-sm font-medium text-foreground mt-0.5">{memberProfile.gym_name}</p>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+  return <div className="max-w-2xl"><PageHeader title="My Profile" description="Manage your account details." /><div className="bg-card border border-border rounded-2xl p-6 mb-6 flex items-center gap-5"><div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center"><span className="text-2xl font-black text-primary">{user?.full_name?.charAt(0).toUpperCase()}</span></div><div><p className="text-lg font-bold">{user?.full_name}</p><p className="text-sm text-muted-foreground">{user?.email}</p><p className="text-xs text-muted-foreground mt-0.5 capitalize">{user?.role?.replace('_', ' ')}</p></div></div><div className="bg-card border border-border rounded-2xl p-6 mb-6"><div className="flex items-center gap-2 mb-5"><User size={16} className="text-primary" /><p className="font-semibold">Personal Information</p></div><form onSubmit={profileForm.handleSubmit(saveProfile)} className="space-y-4"><div><label className="text-sm font-medium">Full Name</label><input {...profileForm.register('full_name')} className={inputClass(profileForm.formState.errors.full_name?.message)} />{profileForm.formState.errors.full_name && <p className="text-xs text-destructive">{profileForm.formState.errors.full_name.message}</p>}</div><div><label className="text-sm font-medium">Email</label><input value={user?.email ?? ''} disabled className="w-full border border-input rounded-lg px-3 py-2.5 text-sm bg-muted text-muted-foreground" /><p className="text-xs text-muted-foreground">Email cannot be changed.</p></div><div><label className="text-sm font-medium">Phone</label><input {...profileForm.register('phone')} className={inputClass()} /></div>{profileError && <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">{profileError}</p>}<div className="flex items-center justify-between pt-2">{profileSaved && <span className="flex items-center gap-1.5 text-sm text-emerald-600"><CheckCircle2 size={15} /> Saved</span>}<button disabled={profileForm.formState.isSubmitting} className="ml-auto bg-primary text-primary-foreground px-6 py-2.5 rounded-lg font-semibold text-sm disabled:opacity-60">{profileForm.formState.isSubmitting ? 'Saving...' : 'Save Changes'}</button></div></form></div><div className="bg-card border border-border rounded-2xl p-6"><div className="flex items-center gap-2 mb-5"><Lock size={16} className="text-primary" /><p className="font-semibold">Change Password</p></div><form onSubmit={passwordForm.handleSubmit(savePassword)} className="space-y-4">{(['old_password', 'new_password', 'confirm'] as const).map((name) => <div key={name}><label className="text-sm font-medium">{{ old_password: 'Current Password', new_password: 'New Password', confirm: 'Confirm New Password' }[name]}</label><input {...passwordForm.register(name)} type="password" className={inputClass(passwordForm.formState.errors[name]?.message)} />{passwordForm.formState.errors[name] && <p className="text-xs text-destructive">{passwordForm.formState.errors[name]?.message}</p>}</div>)}{passwordError && <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">{passwordError}</p>}<div className="flex items-center justify-between pt-2">{passwordSaved && <span className="flex items-center gap-1.5 text-sm text-emerald-600"><CheckCircle2 size={15} /> Password changed</span>}<button disabled={passwordForm.formState.isSubmitting} className="ml-auto bg-primary text-primary-foreground px-6 py-2.5 rounded-lg font-semibold text-sm disabled:opacity-60">{passwordForm.formState.isSubmitting ? 'Updating...' : 'Update Password'}</button></div></form></div></div>
 }

@@ -1,268 +1,134 @@
-import { useState } from 'react'
-import { Calendar, Plus, Users, Clock, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { CalendarDays, Clock, Plus, Trash2, Users } from 'lucide-react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { useAdminClasses, useCancelClass, useCreateClass } from '@/hooks/useClasses'
+import { useGyms } from '@/hooks/useGyms'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
+import { cn } from '@/utils/cn'
 
-interface ClassSession {
-  id: string
-  name: string
-  trainer: string
-  time: string
-  days: string[]
-  capacity: number
-  enrolled: number
-  level: 'Beginner' | 'Intermediate' | 'Advanced'
-}
+const schema = z.object({
+  gym: z.string().min(1, 'Gym required'),
+  title: z.string().min(2, 'Title required'),
+  description: z.string().optional(),
+  trainer: z.string().optional(),
+  starts_at: z.string().min(1, 'Start time required'),
+  ends_at: z.string().min(1, 'End time required'),
+  capacity: z.coerce.number().min(1).max(500),
+}).refine((data) => new Date(data.ends_at) > new Date(data.starts_at), {
+  message: 'End time must be after start time',
+  path: ['ends_at'],
+})
 
-const INITIAL_CLASSES: ClassSession[] = [
-  {
-    id: '1',
-    name: 'Yoga Flow & Meditation',
-    trainer: 'Anya Sharma',
-    time: '07:00 AM - 08:00 AM',
-    days: ['Mon', 'Wed', 'Fri'],
-    capacity: 20,
-    enrolled: 12,
-    level: 'Beginner',
-  },
-  {
-    id: '2',
-    name: 'High Intensity Strength (HIIT)',
-    trainer: 'Vikram Singh',
-    time: '06:00 PM - 07:00 PM',
-    days: ['Tue', 'Thu', 'Sat'],
-    capacity: 15,
-    enrolled: 15,
-    level: 'Advanced',
-  },
-  {
-    id: '3',
-    name: 'Cardio Blast & Conditioning',
-    trainer: 'Rahul Patel',
-    time: '08:30 AM - 09:30 AM',
-    days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-    capacity: 25,
-    enrolled: 18,
-    level: 'Intermediate',
-  },
-]
+type FormInput = z.input<typeof schema>
+type FormData = z.output<typeof schema>
+
+const inputClass = (error?: string) => cn(
+  'w-full border rounded-lg px-3 py-2.5 text-sm bg-background text-foreground',
+  'placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring',
+  error ? 'border-destructive' : 'border-input',
+)
 
 export default function ClassesPage() {
-  const [classes, setClasses] = useState<ClassSession[]>(INITIAL_CLASSES)
-  const [createOpen, setCreateOpen] = useState(false)
-  
-  // Form state
-  const [name, setName] = useState('')
-  const [trainer, setTrainer] = useState('')
-  const [time, setTime] = useState('07:00 AM - 08:00 AM')
-  const [days, setDays] = useState<string[]>([])
-  const [capacity, setCapacity] = useState(20)
-  const [level, setLevel] = useState<'Beginner' | 'Intermediate' | 'Advanced'>('Beginner')
+  const [open, setOpen] = useState(false)
+  const { data: gyms = [] } = useGyms()
+  const { data: classes = [], isLoading } = useAdminClasses()
+  const createClass = useCreateClass()
+  const cancelClass = useCancelClass()
+  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<FormInput, unknown, FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: { capacity: 20, gym: '' },
+  })
 
-  const handleCreate = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!name || !trainer || days.length === 0) return
+  useEffect(() => {
+    if (gyms.length === 1) setValue('gym', gyms[0].id)
+  }, [gyms, setValue])
 
-    const newClass: ClassSession = {
-      id: Date.now().toString(),
-      name,
-      trainer,
-      time,
-      days,
-      capacity,
-      enrolled: 0,
-      level,
-    }
-
-    setClasses([newClass, ...classes])
-    setCreateOpen(false)
-    // reset form
-    setName('')
-    setTrainer('')
-    setDays([])
-    setCapacity(20)
-    setLevel('Beginner')
+  const onSubmit = (data: FormData) => {
+    createClass.mutate(data, {
+      onSuccess: () => {
+        reset({ capacity: 20, gym: gyms.length === 1 ? gyms[0].id : '' })
+        setOpen(false)
+      },
+    })
   }
-
-  const handleDelete = (id: string) => {
-    setClasses(classes.filter(c => c.id !== id))
-  }
-
-  const toggleDay = (day: string) => {
-    setDays(prev =>
-      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
-    )
-  }
-
-  const LEVEL_VARIANTS = {
-    Beginner: 'success',
-    Intermediate: 'default',
-    Advanced: 'destructive',
-  } as const
 
   return (
-    <div className="space-y-6">
+    <div>
       <PageHeader
-        title="Class Schedule"
-        description="Schedule, update, and manage trainer-led sessions for members."
+        title="Classes"
+        description={`${classes.length} class${classes.length === 1 ? '' : 'es'}`}
         actions={
-          <button
-            onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-2 bg-primary text-primary-foreground text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-primary/90 transition-colors"
-          >
-            <Plus size={16} /> Schedule Class
+          <button onClick={() => setOpen(true)} className="flex items-center gap-2 bg-primary text-primary-foreground text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-primary/90">
+            <Plus size={16} /> Add Class
           </button>
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {classes.map(c => (
-          <div
-            key={c.id}
-            className="bg-card border border-border rounded-2xl p-5 flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow"
-          >
-            <div className="space-y-4">
-              <div className="flex justify-between items-start gap-4">
-                <div>
-                  <h3 className="font-semibold text-foreground leading-snug">{c.name}</h3>
-                  <p className="text-xs text-muted-foreground mt-1">Trainer: <span className="font-medium text-foreground">{c.trainer}</span></p>
+      {isLoading ? (
+        <div className="space-y-3">{[1, 2, 3].map((item) => <div key={item} className="h-20 bg-muted rounded-2xl animate-pulse" />)}</div>
+      ) : classes.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 border border-dashed border-border rounded-2xl">
+          <CalendarDays size={40} className="text-muted-foreground/30 mb-4" />
+          <p className="font-medium text-foreground">No classes scheduled</p>
+          <p className="text-sm text-muted-foreground mt-1">Add a class to get started.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {classes.map((cls) => {
+            const start = new Date(cls.starts_at)
+            const end = new Date(cls.ends_at)
+            return (
+              <div key={cls.id} className={cn('bg-card border border-border rounded-2xl p-5 flex items-center gap-5', cls.is_past && 'opacity-60')}>
+                <div className="shrink-0 w-14 text-center bg-muted rounded-xl p-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase">{start.toLocaleDateString('en-IN', { month: 'short' })}</p>
+                  <p className="text-2xl font-black text-foreground leading-none mt-0.5">{start.getDate()}</p>
                 </div>
-                <Badge variant={LEVEL_VARIANTS[c.level]}>{c.level}</Badge>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-foreground">{cls.title}</p>
+                    {cls.is_past ? <Badge variant="outline">Past</Badge>
+                      : cls.is_full ? <Badge variant="destructive">Full</Badge>
+                        : <Badge variant="success">{cls.spots_remaining} spots</Badge>}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-4 mt-1 text-xs text-muted-foreground">
+                    {cls.trainer && <span>with {cls.trainer}</span>}
+                    <span className="flex items-center gap-1"><Clock size={11} />{start.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} - {end.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="flex items-center gap-1"><Users size={11} />{cls.bookings_count}/{cls.capacity}</span>
+                  </div>
+                </div>
+                {!cls.is_past && (
+                  <button onClick={() => cancelClass.mutate(cls.id)} disabled={cancelClass.isPending} className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg" title="Cancel class">
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
+            )
+          })}
+        </div>
+      )}
 
-              <div className="space-y-2 text-sm text-muted-foreground pt-1">
-                <div className="flex items-center gap-2">
-                  <Clock size={14} className="text-muted-foreground/75" />
-                  <span>{c.time}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Calendar size={14} className="text-muted-foreground/75" />
-                  <span className="font-medium text-foreground">{c.days.join(', ')}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Users size={14} className="text-muted-foreground/75" />
-                  <span>{c.enrolled} / {c.capacity} Enrolled</span>
-                </div>
-              </div>
-
-              {/* Progress bar */}
-              <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                <div
-                  className="bg-primary h-1.5 rounded-full transition-all duration-300"
-                  style={{ width: `${Math.min(100, (c.enrolled / c.capacity) * 100)}%` }}
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center pt-4 border-t border-border mt-5">
-              <span className="text-xs text-muted-foreground">ID: #{c.id}</span>
-              <button
-                onClick={() => handleDelete(c.id)}
-                className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
-                title="Remove class"
-              >
-                <Trash2 size={15} />
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Create Modal */}
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Schedule New Class" size="md">
-        <form onSubmit={handleCreate} className="space-y-4">
+      <Modal open={open} onClose={() => setOpen(false)} title="Add Class" size="md">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground">Class Name *</label>
-            <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="e.g. Morning Spin Session"
-              required
-              className="w-full border border-input rounded-lg px-3 py-2.5 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
+            <label className="text-sm font-medium">Gym</label>
+            <select {...register('gym')} className={inputClass(errors.gym?.message)}><option value="">Select gym</option>{gyms.map((gym) => <option key={gym.id} value={gym.id}>{gym.name}</option>)}</select>
+            {errors.gym && <p className="text-xs text-destructive">{errors.gym.message}</p>}
           </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Trainer *</label>
-              <input
-                value={trainer}
-                onChange={e => setTrainer(e.target.value)}
-                placeholder="e.g. Coach Roy"
-                required
-                className="w-full border border-input rounded-lg px-3 py-2.5 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Target Level</label>
-              <select
-                value={level}
-                onChange={e => setLevel(e.target.value as any)}
-                className="w-full border border-input rounded-lg px-3 py-2.5 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="Beginner">Beginner</option>
-                <option value="Intermediate">Intermediate</option>
-                <option value="Advanced">Advanced</option>
-              </select>
-            </div>
+          <div className="space-y-1.5"><label className="text-sm font-medium">Title</label><input {...register('title')} className={inputClass(errors.title?.message)} />{errors.title && <p className="text-xs text-destructive">{errors.title.message}</p>}</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5"><label className="text-sm font-medium">Trainer</label><input {...register('trainer')} className={inputClass()} /></div>
+            <div className="space-y-1.5"><label className="text-sm font-medium">Capacity</label><input type="number" {...register('capacity')} className={inputClass(errors.capacity?.message)} /></div>
           </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Time Slot</label>
-              <input
-                value={time}
-                onChange={e => setTime(e.target.value)}
-                placeholder="e.g. 07:00 AM - 08:00 AM"
-                required
-                className="w-full border border-input rounded-lg px-3 py-2.5 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Capacity (Slots)</label>
-              <input
-                type="number"
-                min={1}
-                value={capacity}
-                onChange={e => setCapacity(Number(e.target.value))}
-                required
-                className="w-full border border-input rounded-lg px-3 py-2.5 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5"><label className="text-sm font-medium">Starts</label><input type="datetime-local" {...register('starts_at')} className={inputClass(errors.starts_at?.message)} /></div>
+            <div className="space-y-1.5"><label className="text-sm font-medium">Ends</label><input type="datetime-local" {...register('ends_at')} className={inputClass(errors.ends_at?.message)} />{errors.ends_at && <p className="text-xs text-destructive">{errors.ends_at.message}</p>}</div>
           </div>
-
-          {/* Days selector */}
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground block">Repeat Days *</label>
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => (
-                <button
-                  type="button"
-                  key={d}
-                  onClick={() => toggleDay(d)}
-                  className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-                    days.includes(d)
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background text-foreground border-input hover:bg-muted'
-                  }`}
-                >
-                  {d}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <button
-              type="submit"
-              className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors"
-            >
-              Schedule Class
-            </button>
-          </div>
+          <div className="space-y-1.5"><label className="text-sm font-medium">Description</label><textarea rows={3} {...register('description')} className={cn(inputClass(), 'resize-none')} /></div>
+          <div className="flex justify-end"><button type="submit" disabled={createClass.isPending} className="bg-primary text-primary-foreground px-6 py-2.5 rounded-lg font-semibold text-sm disabled:opacity-60">{createClass.isPending ? 'Creating...' : 'Create Class'}</button></div>
         </form>
       </Modal>
     </div>

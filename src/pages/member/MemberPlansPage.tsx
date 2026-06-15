@@ -1,152 +1,146 @@
-import { useMyProfile } from '@/hooks/useMembers'
+import { useEffect, useRef, useState } from 'react'
+import axios from 'axios'
+import { CheckCircle2, Dumbbell, Loader2, Star } from 'lucide-react'
 import { usePlans } from '@/hooks/usePlans'
+import { useCreateOrder } from '@/hooks/usePayments'
+import { useMyProfile } from '@/hooks/useMembers'
+import { useRazorpayCheckout } from '@/features/payments/RazorpayCheckout'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { Badge } from '@/components/ui/Badge'
-import { CreditCard, Calendar, Clock, Star } from 'lucide-react'
+import { Modal } from '@/components/ui/Modal'
+import type { MembershipPlan } from '@/types'
+import type { Payment, RazorpayOrder } from '@/api/payments'
 
 export default function MemberPlansPage() {
-  const { data: member, isLoading: memberLoading } = useMyProfile()
-  const { data: plans = [], isLoading: plansLoading } = usePlans({ gym: member?.gym })
+  const [order, setOrder] = useState<RazorpayOrder | null>(null)
+  const [successPayment, setSuccessPayment] = useState<Payment | null>(null)
+  const [error, setError] = useState('')
+  const openedOrder = useRef<string | null>(null)
+  const { data: member } = useMyProfile()
+  const { data: plans = [], isLoading } = usePlans({ gym: member?.gym })
+  const createOrder = useCreateOrder()
 
-  const activeSub = member?.active_subscription
+  const { openCheckout, isVerifying } = useRazorpayCheckout({
+    order,
+    onSuccess: payment => {
+      setSuccessPayment(payment)
+      setOrder(null)
+      openedOrder.current = null
+    },
+    onFailure: () => {
+      setError('Payment could not be completed. Please try again.')
+      setOrder(null)
+      openedOrder.current = null
+    },
+    onDismiss: () => {
+      setOrder(null)
+      openedOrder.current = null
+    },
+  })
 
-  const isLoading = memberLoading || plansLoading
+  useEffect(() => {
+    if (order && openedOrder.current !== order.order_id) {
+      openedOrder.current = order.order_id
+      openCheckout()
+    }
+  }, [order, openCheckout])
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6 max-w-5xl animate-pulse">
-        <div className="h-8 w-48 bg-muted rounded-lg" />
-        <div className="h-48 bg-muted rounded-2xl w-full" />
-      </div>
-    )
+  const buyPlan = async (plan: MembershipPlan) => {
+    setError('')
+    try {
+      const response = await createOrder.mutateAsync(plan.id)
+      setOrder(response.data.data)
+    } catch (requestError) {
+      const message = axios.isAxiosError(requestError)
+        ? requestError.response?.data?.message
+        : null
+      setError(message || 'We could not prepare this order. Please try again.')
+    }
   }
 
+  const activePlanId = member?.active_subscription?.plan.id
+  const availablePlans = plans.filter(plan => plan.is_active)
+
   return (
-    <div className="space-y-8 max-w-5xl">
-      <PageHeader
-        title="My Plans & Billing"
-        description="View your active subscription details and other plans available at your gym."
-      />
+    <div>
+      <PageHeader title="Membership Plans" description={`Choose a plan available at ${member?.gym_name ?? 'your gym'}.`} />
+      {error && <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:border-red-500/20 dark:text-red-300">{error}</div>}
 
-      {/* Active Subscription details */}
-      <div className="bg-card border border-border rounded-2xl p-6 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-bl-full pointer-events-none" />
-        <h2 className="text-base font-semibold text-foreground mb-4 uppercase tracking-widest text-muted-foreground/85">
-          Active Plan Status
-        </h2>
-
-        {activeSub ? (
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="font-bold text-foreground text-xl">{activeSub.plan.name}</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  ₹{Number(activeSub.plan.price).toLocaleString('en-IN')} · {activeSub.plan.duration_label}
-                </p>
-              </div>
-              <Badge variant={activeSub.is_expiring_soon ? 'warning' : 'success'}>
-                {activeSub.is_expiring_soon
-                  ? `Expiring in ${activeSub.days_remaining} days`
-                  : 'Active & Good Standing'
-                }
-              </Badge>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-5 border-t border-border">
-              {[
-                { icon: Calendar, label: 'Start Date', value: new Date(activeSub.start_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) },
-                { icon: Calendar, label: 'Expiry Date', value: new Date(activeSub.end_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) },
-                { icon: Clock, label: 'Days Remaining', value: `${activeSub.days_remaining} Days` },
-              ].map(({ icon: Icon, label, value }) => (
-                <div key={label} className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-muted text-muted-foreground shrink-0">
-                    <Icon size={16} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">{label}</p>
-                    <p className="text-sm font-semibold text-foreground mt-0.5">{value}</p>
-                  </div>
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[1, 2, 3].map(i => <div key={i} className="h-96 bg-muted rounded-2xl animate-pulse" />)}
+        </div>
+      ) : availablePlans.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 border border-dashed border-border rounded-2xl">
+          <Dumbbell size={40} className="text-muted-foreground/30 mb-4" />
+          <p className="font-medium text-foreground">No plans available yet</p>
+          <p className="text-sm text-muted-foreground mt-1">Check back soon or contact your gym.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {availablePlans.map(plan => {
+            const isCurrent = activePlanId === plan.id
+            return (
+              <div key={plan.id} className={`relative bg-card border rounded-2xl p-6 flex flex-col gap-5 transition-all hover:shadow-lg ${plan.is_featured ? 'border-primary ring-2 ring-primary/15' : 'border-border'}`}>
+                {(plan.is_featured || isCurrent) && (
+                  <span className={`absolute -top-3 left-5 flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full text-white ${isCurrent ? 'bg-emerald-600' : 'bg-primary'}`}>
+                    {isCurrent ? <CheckCircle2 size={11} /> : <Star size={11} fill="currentColor" />}
+                    {isCurrent ? 'Current Plan' : 'Most Popular'}
+                  </span>
+                )}
+                <div>
+                  <h3 className="font-bold text-lg text-foreground">{plan.name}</h3>
+                  <p className="text-sm text-muted-foreground mt-1">{plan.description}</p>
                 </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="text-center py-10 bg-muted/20 border border-dashed border-border rounded-xl">
-            <CreditCard size={36} className="text-muted-foreground/30 mx-auto mb-3" />
-            <p className="font-medium text-foreground">No Active Plan Assigned</p>
-            <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
-              Please contact your gym administration desk to purchase or activate a membership plan.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Available plans grid */}
-      <div>
-        <h2 className="text-base font-semibold text-foreground mb-1 uppercase tracking-widest text-muted-foreground/85">
-          Available Gym Plans
-        </h2>
-        <p className="text-xs text-muted-foreground mb-6">Explore membership plans offered by your gym ({member?.gym_name}).</p>
-
-        {plans.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4">No membership plans currently set up by this gym.</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {plans.filter(p => p.is_active).map(plan => {
-              const isActivePlan = activeSub?.plan.id === plan.id
-              return (
-                <div
-                  key={plan.id}
-                  className={`bg-card border rounded-2xl p-5 flex flex-col gap-4 transition-all relative ${
-                    isActivePlan
-                      ? 'border-primary ring-1 ring-primary/20'
-                      : plan.is_featured
-                      ? 'border-border shadow-sm ring-1 ring-primary/10'
-                      : 'border-border'
-                  }`}
+                <div className="flex items-end gap-1.5">
+                  <span className="text-4xl font-black text-foreground">₹{Number(plan.price).toLocaleString('en-IN')}</span>
+                  <span className="text-muted-foreground text-sm mb-1.5">/ {plan.duration_label}</span>
+                </div>
+                <ul className="space-y-2.5 flex-1">
+                  {plan.features.map(feature => (
+                    <li key={feature} className="flex items-start gap-2.5 text-sm text-foreground">
+                      <CheckCircle2 size={16} className="text-emerald-500 mt-0.5 shrink-0" />{feature}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  onClick={() => buyPlan(plan)}
+                  disabled={createOrder.isPending || isVerifying}
+                  className="w-full py-3 rounded-xl text-sm font-bold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors cursor-pointer"
                 >
-                  {plan.is_featured && !isActivePlan && (
-                    <div className="absolute -top-3 left-4">
-                      <span className="flex items-center gap-1 bg-primary text-primary-foreground text-xs font-semibold px-2.5 py-0.5 rounded-full">
-                        <Star size={10} fill="currentColor" /> Featured
-                      </span>
-                    </div>
-                  )}
+                  {isCurrent ? 'Renew Plan' : 'Get Started'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
-                  {isActivePlan && (
-                    <div className="absolute -top-3 left-4">
-                      <span className="flex items-center gap-1 bg-green-600 text-white text-xs font-semibold px-2.5 py-0.5 rounded-full">
-                        Your Current Plan
-                      </span>
-                    </div>
-                  )}
-
-                  <div>
-                    <h3 className="font-semibold text-foreground">{plan.name}</h3>
-                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{plan.description}</p>
-                  </div>
-
-                  <div className="flex items-end gap-1 my-2">
-                    <span className="text-2xl font-bold text-foreground">₹{Number(plan.price).toLocaleString('en-IN')}</span>
-                    <span className="text-xs text-muted-foreground mb-1">/ {plan.duration_label}</span>
-                  </div>
-
-                  {plan.features.length > 0 && (
-                    <ul className="space-y-1.5 pt-2 border-t border-border">
-                      {plan.features.map(f => (
-                        <li key={f} className="flex items-center gap-2 text-xs text-foreground">
-                          <span className="w-1 h-1 rounded-full bg-primary shrink-0" />
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )
-            })}
+      {(createOrder.isPending || isVerifying) && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-card rounded-2xl p-8 flex flex-col items-center gap-4 shadow-xl">
+            <Loader2 size={32} className="animate-spin text-primary" />
+            <p className="text-sm font-medium text-foreground">{isVerifying ? 'Verifying payment...' : 'Preparing your order...'}</p>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      <Modal open={!!successPayment} onClose={() => setSuccessPayment(null)} title="Payment complete" size="sm">
+        <div className="text-center space-y-5 py-2">
+          <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-500/15 flex items-center justify-center mx-auto">
+            <CheckCircle2 size={32} className="text-emerald-600" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-foreground">Membership activated</h3>
+            <p className="text-sm text-muted-foreground mt-2">Your payment was verified and your QR card is ready.</p>
+          </div>
+          <div className="bg-muted/50 rounded-xl p-4 text-left space-y-2">
+            <p className="flex justify-between text-sm"><span className="text-muted-foreground">Invoice</span><span className="font-semibold">{successPayment?.invoice_number}</span></p>
+            <p className="flex justify-between text-sm"><span className="text-muted-foreground">Plan</span><span className="font-semibold">{successPayment?.plan_name}</span></p>
+            <p className="flex justify-between text-sm"><span className="text-muted-foreground">Amount</span><span className="font-semibold">₹{Number(successPayment?.amount).toLocaleString('en-IN')}</span></p>
+          </div>
+          <button onClick={() => setSuccessPayment(null)} className="w-full bg-primary text-primary-foreground font-bold py-3 rounded-xl hover:bg-primary/90 cursor-pointer">Done</button>
+        </div>
+      </Modal>
     </div>
   )
 }

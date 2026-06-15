@@ -2,14 +2,17 @@ import { useState } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useLogout } from '@/hooks/useAuth'
 import { useAuthStore } from '@/store/authStore'
-import { LayoutDashboard, CreditCard, CalendarDays, Ticket, User, LogOut, Menu, X, Bell } from 'lucide-react'
+import { LayoutDashboard, CreditCard, CalendarDays, Ticket, User, LogOut, Menu, X, Bell, QrCode, Receipt, Megaphone } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 
 const NAV = [
   { to: '/member', icon: LayoutDashboard, label: 'Dashboard', end: true },
-  { to: '/member/plans', icon: CreditCard, label: 'Plans & Billing' },
+  { to: '/member/plans', icon: CreditCard, label: 'Plans' },
+  { to: '/member/card', icon: QrCode, label: 'My Card' },
+  { to: '/member/payments', icon: Receipt, label: 'Payments' },
   { to: '/member/classes', icon: CalendarDays, label: 'Classes' },
+  { to: '/member/announcements', icon: Megaphone, label: 'Announcements' },
   { to: '/member/tickets', icon: Ticket, label: 'Support' },
   { to: '/member/profile', icon: User, label: 'Profile' },
 ]

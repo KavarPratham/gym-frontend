@@ -22,10 +22,15 @@ import MembersPage from '@/pages/admin/MembersPage'
 import MemberDetailPage from '@/pages/admin/MemberDetailPage'
 import ClassesPage from '@/pages/admin/ClassesPage'
 import AnnouncementsPage from '@/pages/admin/AnnouncementsPage'
+import AdminTicketsPage from '@/pages/admin/TicketsPage'
 import MemberPlansPage from '@/pages/member/MemberPlansPage'
 import MemberClassesPage from '@/pages/member/MemberClassesPage'
 import MemberTicketsPage from '@/pages/member/MemberTicketsPage'
 import MemberProfilePage from '@/pages/member/MemberProfilePage'
+import MemberAnnouncementsPage from '@/pages/member/MemberAnnouncementsPage'
+import MembershipCardPage from '@/pages/member/MembershipCardPage'
+import PaymentHistoryPage from '@/pages/member/PaymentHistoryPage'
+import PaymentsPage from '@/pages/admin/PaymentsPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +65,8 @@ export default function App() {
               <Route path="/super-admin/plans" element={<PlansPage />} />
               <Route path="/super-admin/members" element={<MembersPage />} />
               <Route path="/super-admin/members/:id" element={<MemberDetailPage />} />
+              <Route path="/super-admin/payments" element={<PaymentsPage />} />
+              <Route path="/super-admin/tickets" element={<AdminTicketsPage />} />
             </Route>
           </Route>
 
@@ -72,6 +79,8 @@ export default function App() {
               <Route path="/admin/members/:id" element={<MemberDetailPage />} />
               <Route path="/admin/classes" element={<ClassesPage />} />
               <Route path="/admin/announcements" element={<AnnouncementsPage />} />
+              <Route path="/admin/tickets" element={<AdminTicketsPage />} />
+              <Route path="/admin/payments" element={<PaymentsPage />} />
               <Route path="/admin/settings" element={<SettingsPage />} />
             </Route>
           </Route>
@@ -81,9 +90,12 @@ export default function App() {
             <Route element={<MemberLayout />}>
               <Route path="/member" element={<MemberDashboard />} />
               <Route path="/member/plans" element={<MemberPlansPage />} />
+              <Route path="/member/card" element={<MembershipCardPage />} />
+              <Route path="/member/payments" element={<PaymentHistoryPage />} />
               <Route path="/member/classes" element={<MemberClassesPage />} />
               <Route path="/member/tickets" element={<MemberTicketsPage />} />
               <Route path="/member/profile" element={<MemberProfilePage />} />
+              <Route path="/member/announcements" element={<MemberAnnouncementsPage />} />
             </Route>
           </Route>
 
